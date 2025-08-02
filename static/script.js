@@ -1,8 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const config = {
-        apiBaseUrl: '', 
-        defaultLang: 'zh',
-    };
+    // -----------------------------------------------------------------------
+    // 1. CONFIGURATION & TRANSLATIONS
+    // -----------------------------------------------------------------------
+    const config = { apiBaseUrl: '', defaultLang: 'zh' };
 
     const translations = {
         heroTitle: { zh: "在此赋予概念以生命，转瞬之间", en: "Bring Concepts to Life Here" },
@@ -16,185 +16,243 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         newChat: { zh: "新对话", en: "New Chat" },
         newChatTitle: { zh: "新对话", en: "New Chat" },
-        chatPlaceholder: {
-            zh: "AI 生成结果具有随机性，您可在此输入修改意见",
-            en: "Results are random. Enter your modifications here for adjustments."
-        },
+        chatPlaceholder: { zh: "AI 生成结果具有随机性，您可在此输入修改意见", en: "Results are random. Enter your modifications here for adjustments." },
         sendTitle: { zh: "发送", en: "Send" },
-        agentThinking: { zh: "Fogsight Agent 正在进行思考与规划，请稍后。这可能需要数十秒至数分钟...", en: "Fogsight Agent is thinking and planning, please wait..." },
+        generatingOutline: { zh: "正在生成大纲，请稍候...", en: "Generating outline, please wait..." },
+        agentThinking: { zh: "Fogsight Agent 正在进行思考与规划，请稍后...", en: "Fogsight Agent is thinking and planning, please wait..." },
         generatingCode: { zh: "生成代码中...", en: "Generating code..." },
         codeComplete: { zh: "代码已完成", en: "Code generated" },
-        openInNewWindow: { zh: "在新窗口中打开", en: "Open in new window" },
+        openInNewWindow: { zh: "新窗口打开", en: "Open in new window" },
         saveAsHTML: { zh: "保存为 HTML", en: "Save as HTML" },
-        exportAsVideo: { zh: "导出为视频", en: "Export as Video" },
-        featureComingSoon: { zh: "该功能正在开发中，将在不久的将来推出.\n 请关注我们的官方 GitHub 仓库以获取最新动态！", en: "This feature is under development and will be available soon.\n Follow our official GitHub repository for the latest updates!" },
-        visitGitHub: { zh: "访问 GitHub", en: "Visit GitHub" },
+        shareAnimation: { zh: "分享", en: "Share"},
+        linkCopied: { zh: "链接已复制", en: "Link Copied"},
+        outlineTitle: { zh: "动画大纲确认", en: "Confirm Animation Outline" },
+        regenerateOutline: { zh: "重新生成大纲", en: "Regenerate Outline" },
+        createFromOutline: { zh: "就按这个生成动画", en: "Create from this Outline" },
         errorMessage: { zh: "抱歉，服务出现了一点问题。请稍后重试。", en: "Sorry, something went wrong. Please try again later." },
-        errorFetchFailed: {zh: "LLM服务不可用，请稍后再试", en: "LLM service is unavailable. Please try again later."},
-        errorTooManyRequests: {zh: "今天已经使用太多，请明天再试", en: "Too many requests today. Please try again tomorrow."},
         errorLLMParseError: {zh: "返回的动画代码解析失败，请调整提示词重新生成。", en: "Failed to parse the returned animation code. Please adjust your prompt and try again."},
     };
 
-    let currentLang = config.defaultLang;
+    // -----------------------------------------------------------------------
+    // 2. DOM ELEMENT & TEMPLATE REFERENCES
+    // -----------------------------------------------------------------------
     const body = document.body;
     const initialForm = document.getElementById('initial-form');
     const initialInput = document.getElementById('initial-input');
     const chatForm = document.getElementById('chat-form');
-    const chatInput = document.getElementById('chat-input');
     const chatLog = document.getElementById('chat-log');
     const newChatButton = document.getElementById('new-chat-button');
     const languageSwitcher = document.getElementById('language-switcher');
-    const placeholderContainer = document.getElementById('animated-placeholder');
-    const featureModal = document.getElementById('feature-modal');
-    const modalGitHubButton = document.getElementById('modal-github-button');
-    const modalCloseButton = document.getElementById('modal-close-button');
-
+    
     const templates = {
         user: document.getElementById('user-message-template'),
         status: document.getElementById('agent-status-template'),
         code: document.getElementById('agent-code-template'),
         player: document.getElementById('animation-player-template'),
         error: document.getElementById('agent-error-template'),
+        outline: document.getElementById('agent-outline-template'),
     };
 
-    class LLMParseError extends Error {
-        constructor(message, code = 'LLM_UNKNOWN_ERROR') {
-            super(message);
-            this.name = 'LLMParseError';
-            this.code = code;
-        }
-    }
-
+    // -----------------------------------------------------------------------
+    // 3. STATE MANAGEMENT
+    // -----------------------------------------------------------------------
+    let currentLang = config.defaultLang;
+    let currentTopic = '';
+    let currentOutline = '';
     let conversationHistory = [];
-    let placeholderInterval;
 
-    function handleFormSubmit(e) {
+    // -----------------------------------------------------------------------
+    // 4. CORE LOGIC (Two-Stage Generation)
+    // -----------------------------------------------------------------------
+
+    function handleInitialFormSubmit(e) {
+        console.log("[Fogsight] Initial form submitted.");
         e.preventDefault();
-        const isInitial = e.currentTarget.id === 'initial-form';
-        const submitButton = isInitial
-            ? initialForm?.querySelector('button')
-            : chatForm?.querySelector('button');
-        
-        const input = isInitial ? initialInput : chatInput;
-        const topic = input.value.trim();
+        const topic = initialInput.value.trim();
         if (!topic) return;
 
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.classList.add('disabled');
-        }
+        currentTopic = topic;
+        const submitButton = initialForm.querySelector('button');
+        submitButton.disabled = true;
 
-        if (isInitial) switchToChatView();
-
-        // 1. Immediately update UI
+        switchToChatView();
         appendUserMessage(topic);
-        const agentThinkingMessage = appendAgentStatus(translations.agentThinking[currentLang]);
-
-        // 2. Then start background tasks
-        conversationHistory.push({ role: 'user', content: topic });
-        startGeneration(topic, agentThinkingMessage).finally(() => {
-            if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.classList.remove('disabled');
-            }
+        
+        generateOutline().finally(() => {
+            console.log("[Fogsight] Initial process finished, re-enabling button.");
+            submitButton.disabled = false;
         });
 
-        input.value = '';
-        if (isInitial) placeholderContainer?.classList?.remove('hidden');
+        initialInput.value = '';
     }
-
-    async function startGeneration(topic, agentThinkingMessage) {
-        console.log('Getting generation from backend.');
-        let fullResponseText = '';
-        let codeBlockElement = null;
+    
+    async function generateOutline() {
+        console.log(`[Fogsight] generateOutline: Starting for topic "${currentTopic}".`);
+        const agentStatusMsg = appendAgentStatus(translations.generatingOutline[currentLang]);
+        
+        let fullOutlineText = '';
+        let outlineCardElement = null;
 
         try {
-            const response = await fetch(`${config.apiBaseUrl}/generate`, {
+            const requestBody = { topic: currentTopic };
+            console.log("[Fogsight] generateOutline: Making fetch request to /generate-outline with body:", JSON.stringify(requestBody));
+            
+            const response = await fetch(`${config.apiBaseUrl}/generate-outline`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ topic: topic, history: conversationHistory })
+                body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
-            let buffer = '';
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    if(outlineCardElement) {
+                        const regenerateBtn = outlineCardElement.querySelector('.regenerate-outline-button');
+                        const createBtn = outlineCardElement.querySelector('.create-animation-button');
+                        [regenerateBtn, createBtn].forEach(btn => btn.disabled = false);
+
+                        regenerateBtn.addEventListener('click', () => {
+                            outlineCardElement.remove();
+                            generateOutline();
+                        });
+                        createBtn.addEventListener('click', () => {
+                            [regenerateBtn, createBtn].forEach(btn => btn.disabled = true);
+                            startAnimationGeneration();
+                        });
+                    }
+                    break;
+                }
+
+                const chunk = decoder.decode(value, { stream: true });
+                console.log("[Fogsight] generateOutline Stream Chunk:", chunk);
+                
+                const lines = chunk.split('\n\n');
+                
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    
+                    const jsonStr = line.substring(6);
+                    if (jsonStr.trim() === '') continue;
+                    
+                    try {
+                        const data = JSON.parse(jsonStr);
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+                        if (data.token) {
+                            if (!outlineCardElement) {
+                                console.log("[Fogsight] generateOutline: First token received, creating outline card.");
+                                agentStatusMsg.remove();
+                                outlineCardElement = appendFromTemplate(templates.outline);
+                                outlineCardElement.querySelectorAll('button').forEach(btn => btn.disabled = true);
+                            }
+                            fullOutlineText += data.token;
+                            const outlineDisplay = outlineCardElement.querySelector('.outline-display');
+                            outlineDisplay.innerHTML = marked.parse(fullOutlineText);
+                        }
+                    } catch (err) {
+                        console.error("[Fogsight] generateOutline: Failed to parse stream JSON:", jsonStr, err);
+                        if (jsonStr.includes("error")) {
+                            throw new Error(`Received error from server: ${jsonStr}`);
+                        }
+                    }
+                }
+            }
+            currentOutline = fullOutlineText;
+            console.log("[Fogsight] generateOutline: Stream finished. Final outline set.");
+
+        } catch (error) {
+            console.error("[Fogsight] generateOutline: An error occurred in the main try-catch block:", error);
+            if (agentStatusMsg) agentStatusMsg.remove();
+            if (outlineCardElement) outlineCardElement.remove();
+            appendErrorMessage(error.message || translations.errorMessage[currentLang]);
+        }
+    }
+
+    async function startAnimationGeneration() {
+        console.log("[Fogsight] startAnimationGeneration: Starting with confirmed outline.");
+        const agentThinkingMessage = appendAgentStatus(translations.agentThinking[currentLang]);
+        
+        let fullResponseText = '';
+        let codeBlockElement = null;
+
+        try {
+            const requestBody = { topic: currentTopic, outline: currentOutline, history: conversationHistory };
+            console.log("[Fogsight] startAnimationGeneration: Making fetch request to /generate-animation with body:", JSON.stringify(requestBody, null, 2));
+
+            const response = await fetch(`${config.apiBaseUrl}/generate-animation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n\n');
-                buffer = lines.pop();
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n\n');
 
                 for (const line of lines) {
                     if (!line.startsWith('data: ')) continue;
-
+                    
                     const jsonStr = line.substring(6);
-                    if (jsonStr.includes('[DONE]')) {
-                        console.log('Streaming complete');
-                        if (codeBlockElement) codeBlockElement.remove(); // Clean up the raw code view
+                    if (jsonStr.trim() === '') continue;
 
+                    let data;
+                    try { data = JSON.parse(jsonStr); } catch (e) { continue; }
+                    
+                    if (data.event === 'done') {
+                        console.log("[Fogsight] startAnimationGeneration: 'done' event received. Animation ID:", data.animation_id);
+                        if (agentThinkingMessage) agentThinkingMessage.remove();
+                        if (codeBlockElement) codeBlockElement.remove();
                         conversationHistory.push({ role: 'assistant', content: fullResponseText });
 
                         const match = fullResponseText.match(/<final_output>([\s\S]*?)<\/final_output>/);
                         if (match && match[1]) {
-                            const htmlContent = match[1].trim();
-                            if (isHtmlContentValid(htmlContent)) {
-                                appendAnimationPlayer(htmlContent, topic);
-                            } else {
-                                throw new LLMParseError('Invalid HTML content received inside final_output.');
-                            }
+                            appendAnimationPlayer(match[1].trim(), data.animation_id);
                         } else {
-                            console.warn('LLM did not return code in the expected <final_output> tag.');
-                            throw new LLMParseError(translations.errorLLMParseError[currentLang]);
+                            throw new Error(translations.errorLLMParseError[currentLang]);
                         }
                         scrollToBottom();
                         return;
                     }
 
-                    let data;
-                    try {
-                        data = JSON.parse(jsonStr);
-                    } catch (err) {
-                        console.error('Failed to parse JSON:', jsonStr);
-                        continue; // Skip malformed lines
+                    if (data.event === 'error') throw new Error(data.message);
+                    
+                    // **FIX**: Moved the logic inside the `if (data.token)` block
+                    if (data.token) {
+                        const token = data.token; // Define token here
+                        if (!codeBlockElement) {
+                            if (agentThinkingMessage) agentThinkingMessage.remove();
+                            codeBlockElement = appendCodeBlock();
+                        }
+                        fullResponseText += token;
+                        updateCodeBlock(codeBlockElement, token);
                     }
-
-                    if (data.error) {
-                        throw new LLMParseError(data.error);
-                    }
-                    const token = data.token || '';
-                    fullResponseText += token;
-
-                    if (!codeBlockElement) {
-                        if (agentThinkingMessage) agentThinkingMessage.remove();
-                        codeBlockElement = appendCodeBlock();
-                    }
-                    updateCodeBlock(codeBlockElement, token);
                 }
             }
         } catch (error) {
-            console.error("Streaming failed:", error);
+            console.error("[Fogsight] startAnimationGeneration: An error occurred:", error);
             if (agentThinkingMessage) agentThinkingMessage.remove();
             if (codeBlockElement) codeBlockElement.remove();
-
-            if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-                showWarning(translations.errorFetchFailed[currentLang]);
-            } else if (error.message.includes('status: 429')) {
-                showWarning(translations.errorTooManyRequests[currentLang]);
-            } else if (error instanceof LLMParseError) {
-                showWarning(error.message); // Use the specific message from the error
-            } else {
-                showWarning(translations.errorFetchFailed[currentLang]);
-            }
-
-            appendErrorMessage(translations.errorMessage[currentLang]);
+            appendErrorMessage(error.message || translations.errorMessage[currentLang]);
         }
     }
-
+    
+    // -----------------------------------------------------------------------
+    // 5. UI & TEMPLATE HELPERS
+    // -----------------------------------------------------------------------
     function switchToChatView() {
         body.classList.remove('show-initial-view');
         body.classList.add('show-chat-view');
@@ -205,7 +263,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function appendFromTemplate(template, text) {
         const node = template.content.cloneNode(true);
         const element = node.firstElementChild;
-        if (text) element.innerHTML = element.innerHTML.replace('${text}', text);
+        if (text) {
+            const p = element.querySelector('p');
+            if (p) p.textContent = text;
+            else element.innerHTML = element.innerHTML.replace('${text}', text);
+        }
         element.querySelectorAll('[data-translate-key]').forEach(el => {
             const key = el.dataset.translateKey;
             const translation = translations[key]?.[currentLang];
@@ -227,91 +289,78 @@ document.addEventListener('DOMContentLoaded', () => {
         const span = document.createElement('span');
         span.textContent = text;
         codeElement.appendChild(span);
-
         const codeContent = codeElement.closest('.code-content');
         if (codeContent) {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    codeContent.scrollTop = codeContent.scrollHeight;
-                });
-            });
+            requestAnimationFrame(() => codeContent.scrollTop = codeContent.scrollHeight);
         }
     }
 
-    function markCodeAsComplete(codeBlockElement) {
-        codeBlockElement.querySelector('[data-translate-key="generatingCode"]').textContent = translations.codeComplete[currentLang];
-        codeBlockElement.querySelector('.code-details').removeAttribute('open');
-    }
-
-    function appendAnimationPlayer(htmlContent, topic) {
-        console.log('Appending animation player with topic:', topic);
+    function appendAnimationPlayer(htmlContent, animationId) {
         const node = templates.player.content.cloneNode(true);
         const playerElement = node.firstElementChild;
+        
         playerElement.querySelectorAll('[data-translate-key]').forEach(el => {
-            const key = el.dataset.translateKey;
-            el.textContent = translations[key]?.[currentLang] || el.textContent;
+            el.textContent = translations[el.dataset.translateKey]?.[currentLang] || el.textContent;
         });
+        
         const iframe = playerElement.querySelector('.animation-iframe');
         iframe.srcdoc = htmlContent;
+
+        const shareButton = playerElement.querySelector('.share-animation');
+        shareButton.addEventListener('click', () => {
+            const shareUrl = `${window.location.origin}/view/${animationId}`;
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                const span = shareButton.querySelector('span');
+                const originalText = span.textContent;
+                span.textContent = translations.linkCopied[currentLang];
+                setTimeout(() => { span.textContent = originalText; }, 2000);
+            }).catch(err => console.error('Failed to copy link:', err));
+        });
 
         playerElement.querySelector('.open-new-window').addEventListener('click', () => {
             const blob = new Blob([htmlContent], { type: 'text/html' });
             window.open(URL.createObjectURL(blob), '_blank');
         });
+        
         playerElement.querySelector('.save-html').addEventListener('click', () => {
             const blob = new Blob([htmlContent], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
-            const a = Object.assign(document.createElement('a'), { href: url, download: `${topic.replace(/\s/g, '_') || 'animation'}.html` });
-            document.body.appendChild(a);
+            const a = Object.assign(document.createElement('a'), { 
+                href: URL.createObjectURL(blob), 
+                download: `${currentTopic.replace(/\s/g, '_') || 'animation'}.html` 
+            });
             a.click();
-            URL.revokeObjectURL(url);
+            URL.revokeObjectURL(a.href);
             a.remove();
         });
-        playerElement.querySelector('.export-video')?.addEventListener('click', () => {
-            featureModal.querySelector('p').textContent = translations.featureComingSoon[currentLang];
-            modalGitHubButton.textContent = translations.visitGitHub[currentLang];
-            featureModal.classList.add('visible');
-        });
+
         chatLog.appendChild(playerElement);
         scrollToBottom();
     }
-
-    function isHtmlContentValid(htmlContent) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlContent, "text/html");
-        const parseErrors = doc.querySelectorAll("parsererror");
-        if (parseErrors.length > 0) {
-            console.warn("HTML parsing failed:", parseErrors[0].textContent);
-            return false;
-        }
-        if (!doc.body || doc.body.innerHTML.trim() === "") {
-            console.warn("HTML content is empty");
-            return false;
-        }
-        return true;
-    }
-
+    
     const scrollToBottom = () => chatLog.scrollTo({ top: chatLog.scrollHeight, behavior: 'smooth' });
 
-    function setNextPlaceholder() {
-        const placeholderTexts = translations.placeholders[currentLang];
-        const newSpan = document.createElement('span');
-        newSpan.textContent = placeholderTexts[placeholderIndex];
-        placeholderContainer.innerHTML = '';
-        placeholderContainer.appendChild(newSpan);
-        placeholderIndex = (placeholderIndex + 1) % placeholderTexts.length;
-    }
+    // -----------------------------------------------------------------------
+    // 6. INITIALIZATION
+    // -----------------------------------------------------------------------
+    function init() {
+        initialForm.addEventListener('submit', handleInitialFormSubmit);
+        
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert("多轮对话微调功能正在开发中。请点击“新对话”开始新的创作。");
+        });
+        
+        newChatButton.addEventListener('click', () => location.reload());
 
-    function startPlaceholderAnimation() {
-        if (placeholderInterval) clearInterval(placeholderInterval);
-        const placeholderTexts = translations.placeholders[currentLang];
-        if (placeholderTexts && placeholderTexts.length > 0) {
-            placeholderIndex = 0;
-            setNextPlaceholder();
-            placeholderInterval = setInterval(setNextPlaceholder, 4000);
-        }
-    }
+        languageSwitcher.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (target) setLanguage(target.dataset.lang);
+        });
 
+        const savedLang = localStorage.getItem('preferredLanguage') || (navigator.language?.startsWith('zh') ? 'zh' : 'en');
+        setLanguage(savedLang);
+    }
+    
     function setLanguage(lang) {
         if (!['zh', 'en'].includes(lang)) return;
         currentLang = lang;
@@ -319,83 +368,16 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-translate-key]').forEach(el => {
             const key = el.dataset.translateKey;
             const translation = translations[key]?.[lang];
-            if (!translation) return;
-            if (el.hasAttribute('placeholder')) el.placeholder = translation;
-            else if (el.hasAttribute('title')) el.title = translation;
-            else el.textContent = translation;
+            if (translation) {
+                if (el.hasAttribute('placeholder')) el.placeholder = translation;
+                else if (el.hasAttribute('title')) el.title = translation;
+                else el.textContent = translation;
+            }
         });
         languageSwitcher.querySelectorAll('button').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.lang === lang);
         });
-        startPlaceholderAnimation();
         localStorage.setItem('preferredLanguage', lang);
-    }
-
-    let placeholderIndex = 0;
-
-    // Encapsulated Warning Functions
-    function showWarning(message) {
-        const box = document.getElementById('warning-box');
-        const overlay = document.getElementById('overlay');
-        const text = document.getElementById('warning-message');
-        text.textContent = message;
-        box.style.display = 'flex';
-        overlay.style.display = 'block';
-
-        setTimeout(() => {
-            hideWarning();
-        }, 10000);
-    }
-
-    function hideWarning() {
-        document.getElementById('warning-box').style.display = 'none';
-        document.getElementById('overlay').style.display = 'none';
-    }
-
-    function init() {
-        initialInput.addEventListener('input', () => {
-            placeholderContainer.classList.toggle('hidden', initialInput.value.length > 0);
-        });
-        initialInput.addEventListener('focus', () => clearInterval(placeholderInterval));
-        initialInput.addEventListener('blur', () => {
-            if (initialInput.value.length === 0) startPlaceholderAnimation();
-        });
-
-        initialForm.addEventListener('submit', handleFormSubmit);
-        chatForm.addEventListener('submit', handleFormSubmit);
-        newChatButton.addEventListener('click', () => location.reload());
-        languageSwitcher.addEventListener('click', (e) => {
-            const target = e.target.closest('button');
-            if (target) setLanguage(target.dataset.lang);
-        });
-
-        function hideModal() {
-            featureModal.classList.remove('visible');
-        }
-
-        modalCloseButton.addEventListener('click', hideModal);
-        featureModal.addEventListener('click', (e) => {
-            if (e.target === featureModal) hideModal();
-        });
-
-        modalGitHubButton.addEventListener('click', () => {
-            window.open('https://github.com/fogsightai/fogsightai', '_blank');
-            hideModal();
-        });
-
-        const savedLang = localStorage.getItem('preferredLanguage');
-        const browserLang = navigator.language?.toLowerCase() || ''; // e.g. 'zh-cn'
-
-        let initialLang = 'en'; 
-        if (['zh', 'en'].includes(savedLang)) {
-            initialLang = savedLang;
-        } else if (browserLang.startsWith('zh')) {
-            initialLang = 'zh';
-        } else if (browserLang.startsWith('en')) {
-            initialLang = 'en';
-        }
-
-        setLanguage(initialLang);
     }
 
     init();

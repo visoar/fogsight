@@ -9,10 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/MotionPathPlugin.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/TextPlugin.min.js"></script>
-
+    <!-- Essential for rendering the outline -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body class="show-initial-view">
 
@@ -65,9 +63,8 @@
             </form>
         </footer>
     </div>
-
-
-
+    
+    <!-- Templates -->
     <template id="user-message-template">
         <div class="message-group user"><div class="message-bubble">${text}</div></div>
     </template>
@@ -86,6 +83,20 @@
             <div class="status-bubble error-bubble">
                 <svg viewBox="0 0 24 24" class="icon-error"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path></svg>
                 <p>${text}</p>
+            </div>
+        </div>
+    </template>
+
+    <!-- P0: New Inline Outline Confirmation Template -->
+    <template id="agent-outline-template">
+        <div class="message-group agent has-outline">
+            <div class="outline-card">
+                <h3 data-translate-key="outlineTitle">动画大纲确认</h3>
+                <div class="outline-display"><div class="thinking-dots" style="margin: 1rem 0;"><span></span><span></span><span></span></div></div>
+                <div class="card-actions">
+                    <button class="secondary regenerate-outline-button" data-translate-key="regenerateOutline">重新生成大纲</button>
+                    <button class="primary create-animation-button" data-translate-key="createFromOutline">就按这个生成动画</button>
+                </div>
             </div>
         </div>
     </template>
@@ -110,37 +121,29 @@
             <div class="player-container">
                 <div class="iframe-wrapper"><iframe class="animation-iframe" sandbox="allow-scripts allow-same-origin"></iframe></div>
                 <div class="player-actions">
+                    <button class="action-button share-animation">
+                        <svg viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><circle cx="6" cy="12" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><line x1="8.7" y1="10.7" x2="15.3" y2="7.3" /><line x1="8.7" y1="13.3" x2="15.3" y2="16.7" /></svg>
+                        <span data-translate-key="shareAnimation">分享</span>
+                    </button>
                     <button class="action-button open-new-window">
                         <svg viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        <span data-translate-key="openInNewWindow">在新窗口中打开</span>
+                        <span data-translate-key="openInNewWindow">新窗口打开</span>
                     </button>
                     <button class="action-button save-html">
                         <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                         <span data-translate-key="saveAsHTML">保存为 HTML</span>
-                    </button>
-                    <button class="action-button export-video">
-                        <svg viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M15 10l4.553 -2.276a1 1 0 0 1 1.447 .894v6.764a1 1 0 0 1 -1.447 .894l-4.553 -2.276v-4z" /><path d="M3 6m0 2a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2z" /></svg>
-                        <span data-translate-key="exportAsVideo">导出为视频</span>
                     </button>
                 </div>
             </div>
         </div>
     </template>
 
-    <div id="feature-modal" class="modal-overlay">
-        <div class="modal-content">
-            <button id="modal-close-button" class="modal-close-button" title="Close">×</button>
-            <p data-translate-key="featureComingSoon">该功能正在开发中...</p>
-            <button id="modal-github-button" class="modal-button" data-translate-key="visitGitHub">访问 GitHub</button>
-        </div>
-    </div>
-
     <script src="/static/script.js?v={{ time }}"></script>
 
     <div id="overlay" class="overlay" style="display: none;"></div>
     <div id="warning-box" class="warning-box" style="display: none;">
-    <span id="warning-message">警告信息</span>
-    <button class="close-button" onclick="hideWarning()">×</button>
+        <span id="warning-message">警告信息</span>
+        <button class="close-button" onclick="hideWarning()">×</button>
     </div>
 </body>
 </html>
